@@ -1,0 +1,12 @@
+# --- Personal data: never commit -------------------------------------------
+# rohlik-replenish test fixtures recorded from the real account: de-identified, but
+# still real order history. Kept on disk for the tests, out of version control.
+**/tests/fixtures/recorded/
+**/tests/fixtures/v1/recorded.sql
+
+# --- Generated / scratch ----------------------------------------------------
+__pycache__/
+*.pyc
+*.db-journal
+*.db-wal
+*.db-shm

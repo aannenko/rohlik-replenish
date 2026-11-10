@@ -1,0 +1,16 @@
+{
+  "name": "rohlik-replenish",
+  "owner": {
+    "name": "Andrii Annenko"
+  },
+  "metadata": {
+    "description": "The rohlik-replenish plugin: an agent skill that fills your Rohlik.cz cart from your order history."
+  },
+  "plugins": [
+    {
+      "name": "rohlik-replenish",
+      "source": "./",
+      "description": "Fills your Rohlik.cz cart for the next delivery from your own order history, without asking what to buy. You review the cart and check out yourself: it never places an order. Rohlik.cz (Czech Republic) only."
+    }
+  ]
+}

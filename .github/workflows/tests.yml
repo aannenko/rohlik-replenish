@@ -1,0 +1,97 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.14"]  # the oldest and newest the engine supports
+    defaults:
+      run:
+        working-directory: skills/rohlik-replenish
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # setup-uv publishes no major-version tags: pin a release
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: ${{ matrix.python }}
+      # the locked dependency versions; the tests that need the private recorded fixtures skip
+      - run: uv run --with pytest --with-requirements replenish.requirements.txt pytest -ra
+      # The engine as an installed plugin starts it: `uv run` on the script's own lock, from a copied folder whose path
+      # has a space, driven through needs_tags, tags apply and the first (dry) run of the synthetic household.
+      - name: launch smoke test
+        shell: bash
+        env:
+          ROHLIK_REPLENISH_DATA_DIR: ${{ runner.temp }}/data
+        run: |
+          fix="$RUNNER_TEMP/fixtures"
+          dest="$RUNNER_TEMP/plugin cache/rohlik-replenish"
+          uv run --with pytest --with-requirements replenish.requirements.txt python -m tests.synthetic "$fix"
+          mkdir -p "$dest"
+          cp -R . "$dest"
+          cd "$dest"
+          engine() {  # expected exit code, expected status, then the command
+            local want_code=$1 want_status=$2 code=0
+            shift 2
+            uv run --locked replenish.py "$@" > "$RUNNER_TEMP/envelope.json" || code=$?
+            if [ "$code" -ne "$want_code" ] || ! grep -q "\"status\": \"$want_status\"" "$RUNNER_TEMP/envelope.json"; then
+              cat "$RUNNER_TEMP/envelope.json"
+              echo "::error::'$*' exited $code; expected exit $want_code and status $want_status"
+              exit 1
+            fi
+          }
+          day=(--fixtures "$fix" --now 2026-10-26T12:00:00+01:00 --date 2026-10-28)
+          engine 2 needs_tags run "${day[@]}"
+          engine 0 ok tags apply "$fix/tags.json"
+          engine 0 dry_run run "${day[@]}"
+
+  lockfiles:
+    name: lockfiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: skills/rohlik-replenish
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      # The lock matches replenish.py's header (--locked), and the committed export, which the tests install, matches
+      # the lock, which users run.
+      - run: |
+          uv export --script replenish.py --locked -o replenish.requirements.txt
+          git diff --exit-code -- replenish.requirements.txt
+
+  # The one check that main's ruleset requires, so the jobs can change without touching the ruleset. It runs even
+  # when a job it needs fails or is cancelled (a skipped required check would count as passed), and passes only when
+  # every one of them succeeded.
+  tests:
+    name: tests
+    needs: [pytest, lockfiles]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: jq -e 'all(.[]; .result == "success")' <<< "$NEEDS"
+        env:
+          NEEDS: ${{ toJSON(needs) }}

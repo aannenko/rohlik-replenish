@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # The actions in .github/workflows are pinned by commit SHA; Dependabot moves each pin and its version comment.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7  # a new release waits at least a week before it is proposed
+    groups:
+      actions:
+        patterns: ["*"]
